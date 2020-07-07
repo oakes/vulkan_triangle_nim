@@ -148,6 +148,9 @@ proc pickPhysicalDevice() =
     if pDevice.isDeviceSuitable():
       physicalDevice = pDevice
 
+  if physicalDevice.ord == 0:
+    raise newException(Exception, "Suitable physical device not found")
+
 proc initVulkan() =
   createInstance()
   pickPhysicalDevice()
