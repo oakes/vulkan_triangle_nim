@@ -12,7 +12,7 @@ type
 var
   window: GLFWWindow
   instance: VkInstance
-  validationLayers = [ "VK_LAYER_KHRONOS_validation" ]
+  validationLayers = [ "VK_LAYER_LUNARG_standard_validation" ]
   physicalDevice: VkPhysicalDevice
   device: VkDevice
 
