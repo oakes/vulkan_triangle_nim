@@ -79,8 +79,8 @@ proc isDeviceSuitable(pDevice: VkPhysicalDevice): bool =
   var deviceProperties: VkPhysicalDeviceProperties
   vkGetPhysicalDeviceProperties(pDevice, deviceProperties.addr)
 
-  if deviceProperties.deviceType != VkPhysicalDeviceTypeDiscreteGPU:
-    return false
+  #if deviceProperties.deviceType != VkPhysicalDeviceTypeDiscreteGPU:
+  #  return false
 
   let indices: QueueFamilyIndices = pDevice.findQueueFamilies()
   return indices.graphicsFamilyFound
