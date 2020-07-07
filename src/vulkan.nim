@@ -22,7 +22,7 @@ proc toString(chars: openArray[char]): string =
     if c != '\0':
       result.add(c)
 
-proc checkValidationLayers(): bool =
+proc checkValidationLayers() =
   var layerCount: uint32 = 0
   discard vkEnumerateInstanceLayerProperties(layerCount.addr, nil)
   var layers = newSeq[VkLayerProperties](layerCount)
@@ -34,15 +34,13 @@ proc checkValidationLayers(): bool =
       if layer.layerName.toString() == validate:
         found = true
     if not found:
-      return false
-    else:
       echo validate & " layer is not supported"
 
 proc findQueueFamilies(pDevice: VkPhysicalDevice): QueueFamilyIndices =
   result.graphicsFamilyFound = false
 
   var queueFamilyCount: uint32 = 0
-  vkGetPhysicalDeviceQueueFamilyProperties(pDevice, queueFamilyCount.aDdr, nil)
+  vkGetPhysicalDeviceQueueFamilyProperties(pDevice, queueFamilyCount.addr, nil)
   var queueFamilies = newSeq[VkQueueFamilyProperties](queueFamilyCount)
   vkGetPhysicalDeviceQueueFamilyProperties(pdevice, queueFamilyCount.addr, queueFamilies[0].addr)
 
@@ -138,8 +136,7 @@ proc createInstance() =
   var extensions = newSeq[VkExtensionProperties](extensionCount)
   discard vkEnumerateInstanceExtensionProperties(nil, extensionCount.addr, extensions[0].addr)
 
-  if not checkValidationLayers():
-    echo "some validation layers are not supported"
+  checkValidationLayers()
 
 proc pickPhysicalDevice() =
   var deviceCount: uint32 = 0
