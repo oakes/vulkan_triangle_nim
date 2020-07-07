@@ -121,8 +121,7 @@ proc pickPhysicalDevice() =
     raise newException(Exception, "Suitable physical device not found")
 
 proc init*(glfwExtensions: cstringArray, glfwExtensionCount: uint32) =
-  if not vkInit():
-    quit("failed to load vulkan")
+  doAssert vkInit()
   createInstance(glfwExtensions, glfwExtensionCount)
   pickPhysicalDevice()
   createLogicalDevice()

@@ -6,8 +6,7 @@ proc keyCallback(window: GLFWWindow, key: int32, scancode: int32, action: int32,
     window.setWindowShouldClose(true)
 
 if isMainModule:
-  if not glfwInit():
-    quit("failed to init glfw")
+  doAssert glfwInit()
 
   glfwWindowHint(GLFWClientApi, GLFWNoApi)
   glfwWindowHint(GLFWResizable, GLFWFalse)
