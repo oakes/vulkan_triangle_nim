@@ -105,7 +105,8 @@ proc createInstance(glfwExtensions: cstringArray, glfwExtensionCount: uint32) =
   var extensions = newSeq[VkExtensionProperties](extensionCount)
   discard vkEnumerateInstanceExtensionProperties(nil, extensionCount.addr, extensions[0].addr)
 
-  checkValidationLayers()
+  # disabled for now
+  #checkValidationLayers()
 
 proc pickPhysicalDevice() =
   var deviceCount: uint32 = 0
@@ -122,9 +123,12 @@ proc pickPhysicalDevice() =
 
 proc init*(glfwExtensions: cstringArray, glfwExtensionCount: uint32) =
   doAssert vkInit()
+  # step 1: instance and physical device selection
   createInstance(glfwExtensions, glfwExtensionCount)
   pickPhysicalDevice()
+  # step 2: logical device and queue families
   createLogicalDevice()
+  # step 3: window surface and swap chain
 
 proc deinit*() =
   vkDestroyDevice(device, nil)
