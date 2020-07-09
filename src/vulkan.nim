@@ -20,7 +20,7 @@ if isMainModule:
   var glfwExtensionCount: uint32 = 0
   var glfwExtensions: cstringArray
   glfwExtensions = glfwGetRequiredInstanceExtensions(glfwExtensionCount.addr)
-  core.init(glfwExtensions, glfwExtensionCount)
+  core.init(w, glfwExtensions, glfwExtensionCount)
 
   while not w.windowShouldClose():
     glfwPollEvents()

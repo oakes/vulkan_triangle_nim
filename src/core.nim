@@ -1,4 +1,5 @@
 import nimgl/vulkan
+from nimgl/glfw import nil
 
 type
   QueueFamilyIndices = object
@@ -10,6 +11,9 @@ var
   validationLayers = [ "VK_LAYER_LUNARG_standard_validation" ]
   physicalDevice: VkPhysicalDevice
   device: VkDevice
+  surface: VkSurfaceKHR
+
+loadVK_KHR_surface()
 
 proc toString(chars: openArray[char]): string =
   result = ""
@@ -121,15 +125,20 @@ proc pickPhysicalDevice() =
   if physicalDevice.ord == 0:
     raise newException(Exception, "Suitable physical device not found")
 
-proc init*(glfwExtensions: cstringArray, glfwExtensionCount: uint32) =
+proc createSurface(window: glfw.GLFWWindow) =
+  if glfw.glfwCreateWindowSurface(instance, window, nil, surface.addr) != VKSuccess:
+    quit("failed to create surface")
+
+proc init*(window: glfw.GLFWWindow, glfwExtensions: cstringArray, glfwExtensionCount: uint32) =
   doAssert vkInit()
   # step 1: instance and physical device selection
   createInstance(glfwExtensions, glfwExtensionCount)
+  createSurface(window) # step 3: window surface and swap chain
   pickPhysicalDevice()
   # step 2: logical device and queue families
   createLogicalDevice()
-  # step 3: window surface and swap chain
 
 proc deinit*() =
   vkDestroyDevice(device, nil)
+  vkDestroySurfaceKHR(instance, surface, nil)
   vkDestroyInstance(instance, nil)
