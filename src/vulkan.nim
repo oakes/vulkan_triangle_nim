@@ -1,4 +1,5 @@
 import nimgl/glfw
+from nimgl/vulkan import nil
 from core import nil
 
 proc keyCallback(window: GLFWWindow, key: int32, scancode: int32, action: int32, mods: int32) {.cdecl.} =
@@ -17,10 +18,14 @@ if isMainModule:
 
   discard w.setKeyCallback(keyCallback)
 
+  proc createSurface(instance: vulkan.VkInstance): vulkan.VkSurfaceKHR =
+    if glfwCreateWindowSurface(instance, w, nil, result.addr) != vulkan.VKSuccess:
+      quit("failed to create surface")
+
   var glfwExtensionCount: uint32 = 0
   var glfwExtensions: cstringArray
   glfwExtensions = glfwGetRequiredInstanceExtensions(glfwExtensionCount.addr)
-  core.init(w, glfwExtensions, glfwExtensionCount)
+  core.init(glfwExtensions, glfwExtensionCount, createSurface)
 
   while not w.windowShouldClose():
     glfwPollEvents()

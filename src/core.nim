@@ -1,5 +1,4 @@
 import nimgl/vulkan
-from nimgl/glfw import nil
 import sets
 
 type
@@ -62,7 +61,7 @@ proc findQueueFamilies(pDevice: VkPhysicalDevice): QueueFamilyIndices =
       break
     index.inc
 
-proc createLogicalDevice() =
+proc createLogicalDevice(): VkDevice =
   let
     indices = physicalDevice.findQueueFamilies()
     uniqueQueueFamilies = [indices.graphicsFamily, indices.presentFamily].toHashSet
@@ -91,11 +90,11 @@ proc createLogicalDevice() =
       ppEnabledExtensionNames = nil
     )
 
-  if vkCreateDevice(physicalDevice, deviceCreateInfo.addr, nil, device.addr) != VKSuccess:
+  if vkCreateDevice(physicalDevice, deviceCreateInfo.addr, nil, result.addr) != VKSuccess:
     echo "failed to create logical device"
 
-  vkGetDeviceQueue(device, indices.graphicsFamily, 0, graphicsQueue.addr)
-  vkGetDeviceQueue(device, indices.presentFamily, 0, presentQueue.addr)
+  vkGetDeviceQueue(result, indices.graphicsFamily, 0, graphicsQueue.addr)
+  vkGetDeviceQueue(result, indices.presentFamily, 0, presentQueue.addr)
 
 proc isDeviceSuitable(pDevice: VkPhysicalDevice): bool =
   var deviceProperties: VkPhysicalDeviceProperties
@@ -107,7 +106,7 @@ proc isDeviceSuitable(pDevice: VkPhysicalDevice): bool =
   let indices: QueueFamilyIndices = pDevice.findQueueFamilies()
   return indices.graphicsFamilyFound
 
-proc createInstance(glfwExtensions: cstringArray, glfwExtensionCount: uint32) =
+proc createInstance(glfwExtensions: cstringArray, glfwExtensionCount: uint32): VkInstance =
   var appInfo = newVkApplicationInfo(
     pApplicationName = "NimGL Vulkan Example",
     applicationVersion = vkMakeVersion(1, 0, 0),
@@ -124,7 +123,7 @@ proc createInstance(glfwExtensions: cstringArray, glfwExtensionCount: uint32) =
     ppEnabledLayerNames = nil,
   )
 
-  if vkCreateInstance(instanceCreateInfo.addr, nil, instance.addr) != VKSuccess:
+  if vkCreateInstance(instanceCreateInfo.addr, nil, result.addr) != VKSuccess:
     quit("failed to create instance")
 
   var extensionCount: uint32 = 0
@@ -135,7 +134,7 @@ proc createInstance(glfwExtensions: cstringArray, glfwExtensionCount: uint32) =
   # disabled for now
   #checkValidationLayers()
 
-proc pickPhysicalDevice() =
+proc pickPhysicalDevice(): VkPhysicalDevice =
   var deviceCount: uint32 = 0
   discard vkEnumeratePhysicalDevices(instance, deviceCount.addr, nil)
   var devices = newSeq[VkPhysicalDevice](deviceCount)
@@ -143,23 +142,21 @@ proc pickPhysicalDevice() =
 
   for pDevice in devices:
     if pDevice.isDeviceSuitable():
-      physicalDevice = pDevice
+      return pDevice
 
-  if physicalDevice.ord == 0:
-    raise newException(Exception, "Suitable physical device not found")
+  raise newException(Exception, "Suitable physical device not found")
 
-proc createSurface(window: glfw.GLFWWindow) =
-  if glfw.glfwCreateWindowSurface(instance, window, nil, surface.addr) != VKSuccess:
-    quit("failed to create surface")
+type
+  CreateSurfaceProc = proc (instance: VkInstance): VkSurfaceKHR
 
-proc init*(window: glfw.GLFWWindow, glfwExtensions: cstringArray, glfwExtensionCount: uint32) =
+proc init*(glfwExtensions: cstringArray, glfwExtensionCount: uint32, createSurface: CreateSurfaceProc) =
   doAssert vkInit()
   # step 1: instance and physical device selection
-  createInstance(glfwExtensions, glfwExtensionCount)
-  createSurface(window) # step 3: window surface and swap chain
-  pickPhysicalDevice()
+  instance = createInstance(glfwExtensions, glfwExtensionCount)
+  surface = createSurface(instance) # step 3: window surface and swap chain
+  physicalDevice = pickPhysicalDevice()
   # step 2: logical device and queue families
-  createLogicalDevice()
+  device = createLogicalDevice()
 
 proc deinit*() =
   vkDestroyDevice(device, nil)
