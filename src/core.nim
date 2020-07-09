@@ -1,10 +1,13 @@
 import nimgl/vulkan
 from nimgl/glfw import nil
+import sets
 
 type
   QueueFamilyIndices = object
     graphicsFamily: uint32
     graphicsFamilyFound: bool
+    presentFamily: uint32
+    presentFamilyFound: bool
 
 var
   instance: VkInstance
@@ -12,6 +15,8 @@ var
   physicalDevice: VkPhysicalDevice
   device: VkDevice
   surface: VkSurfaceKHR
+  graphicsQueue: VkQueue
+  presentQueue: VkQueue
 
 loadVK_KHR_surface()
 
@@ -41,29 +46,44 @@ proc findQueueFamilies(pDevice: VkPhysicalDevice): QueueFamilyIndices =
   var queueFamilyCount: uint32 = 0
   vkGetPhysicalDeviceQueueFamilyProperties(pDevice, queueFamilyCount.addr, nil)
   var queueFamilies = newSeq[VkQueueFamilyProperties](queueFamilyCount)
-  vkGetPhysicalDeviceQueueFamilyProperties(pdevice, queueFamilyCount.addr, queueFamilies[0].addr)
+  vkGetPhysicalDeviceQueueFamilyProperties(pDevice, queueFamilyCount.addr, queueFamilies[0].addr)
 
-  var indice: uint32 = 0
+  var index: uint32 = 0
   for queueFamily in queueFamilies:
     if (queueFamily.queueFlags.uint32 and VkQueueGraphicsBit.uint32) > 0'u32:
-      result.graphicsFamily = indice
+      result.graphicsFamily = index
       result.graphicsFamilyFound = true
-    indice.inc
+    var presentSupport: VkBool32
+    discard vkGetPhysicalDeviceSurfaceSupportKHR(pDevice, index, surface, presentSupport.addr)
+    if presentSupport.ord == 1:
+      result.presentFamily = index
+      result.presentFamilyFound = true
+    if result.graphicsFamilyFound and result.presentFamilyFound:
+      break
+    index.inc
 
 proc createLogicalDevice() =
-  var
+  let
     indices = physicalDevice.findQueueFamilies()
+    uniqueQueueFamilies = [indices.graphicsFamily, indices.presentFamily].toHashSet
+  var
     queuePriority = 1.0
-    deviceFeatures = newSeq[VkPhysicalDeviceFeatures](1)
+    queueCreateInfos = newSeq[VkDeviceQueueCreateInfo]()
 
-    deviceQueueCreateInfo = newVkDeviceQueueCreateInfo(
-      queueFamilyIndex = indices.graphicsFamily,
+  for queueFamily in uniqueQueueFamilies:
+    let deviceQueueCreateInfo = newVkDeviceQueueCreateInfo(
+      sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+      queueFamilyIndex = queueFamily,
       queueCount = 1,
       pQueuePriorities = queuePriority.addr
     )
+    queueCreateInfos.add(deviceQueueCreateInfo)
+
+  var
+    deviceFeatures = newSeq[VkPhysicalDeviceFeatures](1)
     deviceCreateInfo = newVkDeviceCreateInfo(
-      pQueueCreateInfos = deviceQueueCreateInfo.addr,
-      queueCreateInfoCount = 1,
+      pQueueCreateInfos = queueCreateInfos[0].addr,
+      queueCreateInfoCount = queueCreateInfos.len.uint32,
       pEnabledFeatures = deviceFeatures[0].addr,
       enabledExtensionCount = 0,
       enabledLayerCount = 0,
@@ -73,6 +93,9 @@ proc createLogicalDevice() =
 
   if vkCreateDevice(physicalDevice, deviceCreateInfo.addr, nil, device.addr) != VKSuccess:
     echo "failed to create logical device"
+
+  vkGetDeviceQueue(device, indices.graphicsFamily, 0, graphicsQueue.addr)
+  vkGetDeviceQueue(device, indices.presentFamily, 0, presentQueue.addr)
 
 proc isDeviceSuitable(pDevice: VkPhysicalDevice): bool =
   var deviceProperties: VkPhysicalDeviceProperties
