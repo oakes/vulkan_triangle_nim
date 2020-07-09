@@ -10,7 +10,7 @@ type
 
 const
   validationLayers = ["VK_LAYER_LUNARG_standard_validation"]
-  deviceExtensions = ["VK_KHR_swapchain"].toHashSet
+  deviceExtensions = ["VK_KHR_swapchain"]
 
 var
   instance: VkInstance
@@ -87,18 +87,21 @@ proc createLogicalDevice(): VkDevice =
 
   var
     deviceFeatures = newSeq[VkPhysicalDeviceFeatures](1)
+    deviceExts = allocCStringArray(deviceExtensions)
     deviceCreateInfo = newVkDeviceCreateInfo(
       pQueueCreateInfos = queueCreateInfos[0].addr,
       queueCreateInfoCount = queueCreateInfos.len.uint32,
       pEnabledFeatures = deviceFeatures[0].addr,
-      enabledExtensionCount = 0,
+      enabledExtensionCount = deviceExtensions.len.uint32,
       enabledLayerCount = 0,
       ppEnabledLayerNames = nil,
-      ppEnabledExtensionNames = nil
+      ppEnabledExtensionNames = deviceExts
     )
 
   if vkCreateDevice(physicalDevice, deviceCreateInfo.addr, nil, result.addr) != VKSuccess:
     echo "failed to create logical device"
+
+  deallocCStringArray(deviceExts)
 
   vkGetDeviceQueue(result, indices.graphicsFamily, 0, graphicsQueue.addr)
   vkGetDeviceQueue(result, indices.presentFamily, 0, presentQueue.addr)
@@ -109,7 +112,7 @@ proc checkDeviceExtensionSupport(pDevice: VkPhysicalDevice): bool =
   var availableExts = newSeq[VkExtensionProperties](extCount)
   discard vkEnumerateDeviceExtensionProperties(pDevice, nil, extCount.addr, availableExts[0].addr)
 
-  var requiredExts = deviceExtensions
+  var requiredExts = deviceExtensions.toHashSet
   for ext in availableExts.mitems:
     requiredExts.excl($ ext.extensionName.addr)
   requiredExts.len == 0
