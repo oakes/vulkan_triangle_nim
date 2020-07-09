@@ -2,6 +2,7 @@ import nimgl/vulkan
 import sets
 
 type
+  CreateSurfaceProc = proc (instance: VkInstance): VkSurfaceKHR
   QueueFamilyIndices = object
     graphicsFamily: uint32
     graphicsFamilyFound: bool
@@ -15,6 +16,8 @@ type
 const
   validationLayers = ["VK_LAYER_LUNARG_standard_validation"]
   deviceExtensions = ["VK_KHR_swapchain"]
+  WIDTH = 800
+  HEIGHT = 600
 
 var
   instance: VkInstance
@@ -23,6 +26,10 @@ var
   surface: VkSurfaceKHR
   graphicsQueue: VkQueue
   presentQueue: VkQueue
+  swapChain: VkSwapchainKHR
+  swapChainImages: seq[VkImage]
+  swapChainImageFormat: VkFormat
+  swapChainExtent: VkExtent2D
 
 loadVK_KHR_surface()
 loadVK_KHR_swapchain()
@@ -193,19 +200,92 @@ proc pickPhysicalDevice(): VkPhysicalDevice =
 
   raise newException(Exception, "Suitable physical device not found")
 
-type
-  CreateSurfaceProc = proc (instance: VkInstance): VkSurfaceKHR
+proc chooseSwapSurfaceFormat(availableFormats: seq[VkSurfaceFormatKHR]): VkSurfaceFormatKHR =
+  for availableFormat in availableFormats:
+    if availableFormat.format == VK_FORMAT_B8G8R8A8_SRGB and
+      availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR:
+      return availableFormat
+  availableFormats[0]
+
+proc chooseSwapPresentMode(availablePresentModes: seq[VkPresentModeKHR]): VkPresentModeKHR =
+  for availablePresentMode in availablePresentModes:
+    if availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR:
+      return availablePresentMode
+  VK_PRESENT_MODE_FIFO_KHR
+
+proc chooseSwapExtent(capabilities: VkSurfaceCapabilitiesKHR): VkExtent2D =
+  if capabilities.currentExtent.width != uint32.high:
+    return capabilities.currentExtent
+  else:
+    result = VkExtent2D(width: WIDTH, height: HEIGHT)
+    result.width =
+      max(
+        capabilities.minImageExtent.width,
+        min(capabilities.maxImageExtent.width, result.width)
+      )
+    result.height =
+      max(
+        capabilities.minImageExtent.height,
+        min(capabilities.maxImageExtent.height, result.height)
+      )
+
+proc createSwapChain(): tuple[swapChain: VkSwapchainKHR, swapChainImageFormat: VkFormat, swapChainExtent: VkExtent2D] =
+  let
+    swapChainSupport = querySwapChainSupport(physicalDevice)
+    surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats)
+    presentMode = chooseSwapPresentMode(swapChainSupport.presentModes)
+    extent = chooseSwapExtent(swapChainSupport.capabilities)
+  var imageCount = swapChainSupport.capabilities.minImageCount + 1
+  if swapChainSupport.capabilities.maxImageCount > 0 and
+    imageCount > swapChainSupport.capabilities.maxImageCount:
+    imageCount = swapChainSupport.capabilities.maxImageCount
+  var createInfo = VkSwapchainCreateInfoKHR(
+    # sType: VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR
+    surface: surface,
+    minImageCount: imageCount,
+    imageFormat: surfaceFormat.format,
+    imageColorSpace: surfaceFormat.colorSpace,
+    imageExtent: extent,
+    imageArrayLayers: 1,
+    # imageUsage: VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
+  )
+  let indices = physicalDevice.findQueueFamilies()
+  var queueFamilyIndices = [indices.graphicsFamily, indices.presentFamily]
+  if indices.graphicsFamily != indices.presentFamily:
+    createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT
+    createInfo.queueFamilyIndexCount = queueFamilyIndices.len.uint32
+    createInfo.pQueueFamilyIndices = cast[ptr uint32](queueFamilyIndices.addr)
+  else:
+    createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE
+    createInfo.queueFamilyIndexCount = 0 # optional
+    createInfo.pQueueFamilyIndices = nil # optional
+  createInfo.preTransform = swapChainSupport.capabilities.currentTransform
+  createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR
+  createInfo.presentMode = presentMode
+  createInfo.clipped = VkBool32(VK_TRUE)
+  createInfo.oldSwapChain = VkSwapchainKHR(0)
+  if vkCreateSwapChainKHR(device, createInfo.addr, nil, result.swapChain.addr) != VK_SUCCESS:
+    quit("failed to create swap chain")
+  discard vkGetSwapchainImagesKHR(device, result.swapChain, imageCount.addr, nil)
+  swapChainImages.setLen(imageCount)
+  discard vkGetSwapchainImagesKHR(device, result.swapChain, imageCount.addr, swapChainImages[0].addr)
 
 proc init*(glfwExtensions: cstringArray, glfwExtensionCount: uint32, createSurface: CreateSurfaceProc) =
   doAssert vkInit()
   # step 1: instance and physical device selection
   instance = createInstance(glfwExtensions, glfwExtensionCount)
-  surface = createSurface(instance) # step 3: window surface and swap chain
+  surface = createSurface(instance) # step 3: window surface
   physicalDevice = pickPhysicalDevice()
   # step 2: logical device and queue families
   device = createLogicalDevice()
+  # step 3: swap chain
+  let ret = createSwapChain()
+  swapChain = ret.swapChain
+  swapChainImageFormat = ret.swapChainImageFormat
+  swapChainExtent = ret.swapChainExtent
 
 proc deinit*() =
+  vkDestroySwapchainKHR(device, swapChain, nil)
   vkDestroyDevice(device, nil)
   vkDestroySurfaceKHR(instance, surface, nil)
   vkDestroyInstance(instance, nil)
