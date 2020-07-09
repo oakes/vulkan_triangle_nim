@@ -8,9 +8,12 @@ type
     presentFamily: uint32
     presentFamilyFound: bool
 
+const
+  validationLayers = ["VK_LAYER_LUNARG_standard_validation"]
+  deviceExtensions = ["VK_KHR_swapchain"].toHashSet
+
 var
   instance: VkInstance
-  validationLayers = [ "VK_LAYER_LUNARG_standard_validation" ]
   physicalDevice: VkPhysicalDevice
   device: VkDevice
   surface: VkSurfaceKHR
@@ -18,6 +21,7 @@ var
   presentQueue: VkQueue
 
 loadVK_KHR_surface()
+loadVK_KHR_swapchain()
 
 proc toString(chars: openArray[char]): string =
   result = ""
@@ -39,6 +43,9 @@ proc checkValidationLayers() =
     if not found:
       echo validate & " layer is not supported"
 
+proc isComplete(indices: QueueFamilyIndices): bool =
+  indices.graphicsFamilyFound and indices.presentFamilyFound
+
 proc findQueueFamilies(pDevice: VkPhysicalDevice): QueueFamilyIndices =
   result.graphicsFamilyFound = false
 
@@ -57,7 +64,7 @@ proc findQueueFamilies(pDevice: VkPhysicalDevice): QueueFamilyIndices =
     if presentSupport.ord == 1:
       result.presentFamily = index
       result.presentFamilyFound = true
-    if result.graphicsFamilyFound and result.presentFamilyFound:
+    if result.isComplete:
       break
     index.inc
 
@@ -96,6 +103,17 @@ proc createLogicalDevice(): VkDevice =
   vkGetDeviceQueue(result, indices.graphicsFamily, 0, graphicsQueue.addr)
   vkGetDeviceQueue(result, indices.presentFamily, 0, presentQueue.addr)
 
+proc checkDeviceExtensionSupport(pDevice: VkPhysicalDevice): bool =
+  var extCount: uint32
+  discard vkEnumerateDeviceExtensionProperties(pDevice, nil, extCount.addr, nil)
+  var availableExts = newSeq[VkExtensionProperties](extCount)
+  discard vkEnumerateDeviceExtensionProperties(pDevice, nil, extCount.addr, availableExts[0].addr)
+
+  var requiredExts = deviceExtensions
+  for ext in availableExts.mitems:
+    requiredExts.excl($ ext.extensionName.addr)
+  requiredExts.len == 0
+
 proc isDeviceSuitable(pDevice: VkPhysicalDevice): bool =
   var deviceProperties: VkPhysicalDeviceProperties
   vkGetPhysicalDeviceProperties(pDevice, deviceProperties.addr)
@@ -103,8 +121,8 @@ proc isDeviceSuitable(pDevice: VkPhysicalDevice): bool =
   #if deviceProperties.deviceType != VkPhysicalDeviceTypeDiscreteGPU:
   #  return false
 
-  let indices: QueueFamilyIndices = pDevice.findQueueFamilies()
-  return indices.graphicsFamilyFound
+  let indices: QueueFamilyIndices = pDevice.findQueueFamilies
+  return indices.isComplete and pDevice.checkDeviceExtensionSupport
 
 proc createInstance(glfwExtensions: cstringArray, glfwExtensionCount: uint32): VkInstance =
   var appInfo = newVkApplicationInfo(
