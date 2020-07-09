@@ -7,6 +7,10 @@ type
     graphicsFamilyFound: bool
     presentFamily: uint32
     presentFamilyFound: bool
+  SwapChainSupportDetails = object
+    capabilities: VkSurfaceCapabilitiesKHR
+    formats: seq[VkSurfaceFormatKHR]
+    presentModes: seq[VkPresentModeKHR]
 
 const
   validationLayers = ["VK_LAYER_LUNARG_standard_validation"]
@@ -117,6 +121,19 @@ proc checkDeviceExtensionSupport(pDevice: VkPhysicalDevice): bool =
     requiredExts.excl($ ext.extensionName.addr)
   requiredExts.len == 0
 
+proc querySwapChainSupport(pDevice: VkPhysicalDevice): SwapChainSupportDetails =
+  discard vkGetPhysicalDeviceSurfaceCapabilitiesKHR(pDevice, surface, result.capabilities.addr)
+  var formatCount: uint32
+  discard vkGetPhysicalDeviceSurfaceFormatsKHR(pDevice, surface, formatCount.addr, nil)
+  if formatCount != 0:
+    result.formats.setLen(formatCount)
+    discard vkGetPhysicalDeviceSurfaceFormatsKHR(pDevice, surface, formatCount.addr, result.formats[0].addr)
+  var presentModeCount: uint32
+  discard vkGetPhysicalDeviceSurfacePresentModesKHR(pDevice, surface, presentModeCount.addr, nil)
+  if presentModeCount != 0:
+    result.presentModes.setLen(presentModeCount)
+    discard vkGetPhysicalDeviceSurfacePresentModesKHR(pDevice, surface, presentModeCount.addr, result.presentModes[0].addr)
+
 proc isDeviceSuitable(pDevice: VkPhysicalDevice): bool =
   var deviceProperties: VkPhysicalDeviceProperties
   vkGetPhysicalDeviceProperties(pDevice, deviceProperties.addr)
@@ -124,8 +141,17 @@ proc isDeviceSuitable(pDevice: VkPhysicalDevice): bool =
   #if deviceProperties.deviceType != VkPhysicalDeviceTypeDiscreteGPU:
   #  return false
 
+  let extsSupported = pDevice.checkDeviceExtensionSupport
+
+  var swapChainAdequate = false
+  if extsSupported:
+    let swapChainSupport = querySwapChainSupport(pDevice)
+    swapChainAdequate =
+      swapChainSupport.formats.len != 0 and
+      swapChainSupport.presentModes.len != 0
+
   let indices: QueueFamilyIndices = pDevice.findQueueFamilies
-  return indices.isComplete and pDevice.checkDeviceExtensionSupport
+  return indices.isComplete and extsSupported and swapChainAdequate
 
 proc createInstance(glfwExtensions: cstringArray, glfwExtensionCount: uint32): VkInstance =
   var appInfo = newVkApplicationInfo(
