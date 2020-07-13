@@ -19,12 +19,17 @@ type
     capabilities: VkSurfaceCapabilitiesKHR
     formats: seq[VkSurfaceFormatKHR]
     presentModes: seq[VkPresentModeKHR]
+  GraphicsPipeline = tuple[
+    pipelineLayout: VkPipelineLayout,
+    pipeline: VkPipeline,
+  ]
 
 const
   validationLayers = ["VK_LAYER_LUNARG_standard_validation"]
   deviceExtensions = ["VK_KHR_swapchain"]
   WIDTH = 800
   HEIGHT = 600
+  VK_NULL_HANDLE = 0
 
 var
   instance: VkInstance
@@ -34,7 +39,8 @@ var
   graphicsQueue: VkQueue
   presentQueue: VkQueue
   swapChain: SwapChain
-  pipelineLayout: VkPipelineLayout
+  renderPass: VkRenderPass
+  graphicsPipeline: GraphicsPipeline
 
 loadVK_KHR_surface()
 loadVK_KHR_swapchain()
@@ -259,7 +265,7 @@ proc createSwapChain(): SwapChain =
   if indices.graphicsFamily != indices.presentFamily:
     createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT
     createInfo.queueFamilyIndexCount = queueFamilyIndices.len.uint32
-    createInfo.pQueueFamilyIndices = cast[ptr uint32](queueFamilyIndices.addr)
+    createInfo.pQueueFamilyIndices = queueFamilyIndices[0].addr
   else:
     createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE
     createInfo.queueFamilyIndexCount = 0 # optional
@@ -281,12 +287,12 @@ proc createShaderModule(code: string): VkShaderModule =
   var createInfo = VkShaderModuleCreateInfo(
     sType: VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
     codeSize: code.len.uint32,
-    pCode: cast[ptr uint32](code.unsafeAddr)
+    pCode: cast[ptr uint32](code[0].unsafeAddr)
   )
   if vkCreateShaderModule(device, createInfo.addr, nil, result.addr) != VK_SUCCESS:
     quit("failed to create shader module")
 
-proc createGraphicsPipeline(): VkPipelineLayout =
+proc createGraphicsPipeline(): GraphicsPipeline =
   const
     vertShaderCode = staticRead("shaders/vert.spv")
     fragShaderCode = staticRead("shaders/frag.spv")
@@ -389,8 +395,8 @@ proc createGraphicsPipeline(): VkPipelineLayout =
     dynamicStates = [VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_LINE_WIDTH]
     dynamicState = VkPipelineDynamicStateCreateInfo(
       sType: VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-      dynamicStateCount: 2,
-      pDynamicStates: cast[ptr VkDynamicState](dynamicStates.addr),
+      dynamicStateCount: dynamicStates.len.uint32,
+      pDynamicStates: dynamicStates[0].addr,
     )
     pipelineLayoutInfo = VkPipelineLayoutCreateInfo(
       sType: VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
@@ -399,10 +405,62 @@ proc createGraphicsPipeline(): VkPipelineLayout =
       pushConstantRangeCount: 0, # optional
       pPushConstantRanges: nil, # optional
     )
-  if vkCreatePipelineLayout(device, pipelineLayoutInfo.addr, nil, result.addr) != VK_SUCCESS:
+  if vkCreatePipelineLayout(device, pipelineLayoutInfo.addr, nil, result.pipelineLayout.addr) != VK_SUCCESS:
     quit("failed to create pipeline layout")
+  var
+    pipelineInfo = VkGraphicsPipelineCreateInfo(
+      sType: VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+      stageCount: shaderStages.len.uint32,
+      pStages: shaderStages[0].addr,
+      pVertexInputState: vertexInputInfo.addr,
+      pInputAssemblyState: inputAssembly.addr,
+      pViewportState: viewportState.addr,
+      pRasterizationState: rasterizer.addr,
+      pMultisampleState: multisampling.addr,
+      pDepthStencilState: nil, # optional
+      pColorBlendState: colorBlending.addr,
+      pDynamicState: nil, # optional
+      layout: result.pipelineLayout,
+      renderPass: renderPass,
+      subpass: 0,
+      basePipelineHandle: VkPipeline(VK_NULL_HANDLE), # optional
+      basePipelineIndex: -1, # optional
+    )
+  if vkCreateGraphicsPipelines(device, VkPipelineCache(VK_NULL_HANDLE), 1, pipelineInfo.addr, nil, result.pipeline.addr) != VK_SUCCESS:
+    quit("fialed to create graphics pipeline")
   vkDestroyShaderModule(device, vertShaderModule, nil)
   vkDestroyShaderModule(device, fragShaderModule, nil)
+
+proc createRenderPass(): VkRenderPass =
+  var
+    colorAttachment = VkAttachmentDescription(
+      format: swapChain.swapChainImageFormat,
+      samples: VK_SAMPLE_COUNT_1_BIT,
+      loadOp: VK_ATTACHMENT_LOAD_OP_CLEAR,
+      storeOp: VK_ATTACHMENT_STORE_OP_STORE,
+      stencilLoadOp: VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+      stencilStoreOp: VK_ATTACHMENT_STORE_OP_DONT_CARE,
+      initialLayout: VK_IMAGE_LAYOUT_UNDEFINED,
+      finalLayout: cast[VkImageLayout](1000001002), # VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
+    )
+    colorAttachmentRef = VkAttachmentReference(
+      attachment: 0,
+      layout: VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+    )
+    subpass = VkSubpassDescription(
+      pipelineBindPoint: VK_PIPELINE_BIND_POINT_GRAPHICS,
+      colorAttachmentCount: 1,
+      pColorAttachments: colorAttachmentRef.addr,
+    )
+    renderPassInfo = VkRenderPassCreateInfo(
+      sType: VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+      attachmentCount: 1,
+      pAttachments: colorAttachment.addr,
+      subpassCount: 1,
+      pSubpasses: subpass.addr,
+    )
+  if vkCreateRenderPass(device, renderPassInfo.addr, nil, result.addr) != VK_SUCCESS:
+    quit("failed to create render pass")
 
 proc init*(glfwExtensions: cstringArray, glfwExtensionCount: uint32, createSurface: CreateSurfaceProc) =
   doAssert vkInit()
@@ -415,10 +473,13 @@ proc init*(glfwExtensions: cstringArray, glfwExtensionCount: uint32, createSurfa
   # step 3: swap chain
   swapChain = createSwapChain()
   # step 4: graphics pipeline
-  pipelineLayout = createGraphicsPipeline()
+  renderPass = createRenderPass()
+  graphicsPipeline = createGraphicsPipeline()
 
 proc deinit*() =
-  vkDestroyPipelineLayout(device, pipelineLayout, nil)
+  vkDestroyPipeline(device, graphicsPipeline.pipeline, nil)
+  vkDestroyPipelineLayout(device, graphicsPipeline.pipelineLayout, nil)
+  vkDestroyRenderPass(device, renderPass, nil)
   vkDestroySwapchainKHR(device, swapChain.swapChain, nil)
   vkDestroyDevice(device, nil)
   vkDestroySurfaceKHR(instance, surface, nil)
