@@ -240,14 +240,14 @@ proc createSwapChain(): tuple[swapChain: VkSwapchainKHR, swapChainImageFormat: V
     imageCount > swapChainSupport.capabilities.maxImageCount:
     imageCount = swapChainSupport.capabilities.maxImageCount
   var createInfo = VkSwapchainCreateInfoKHR(
-    # sType: VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR
+    sType: cast[VkStructureType](1000001000), # VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR
     surface: surface,
     minImageCount: imageCount,
     imageFormat: surfaceFormat.format,
     imageColorSpace: surfaceFormat.colorSpace,
     imageExtent: extent,
     imageArrayLayers: 1,
-    # imageUsage: VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
+    imageUsage: VkImageUsageFlags(0x00000010), # VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
   )
   let indices = physicalDevice.findQueueFamilies()
   var queueFamilyIndices = [indices.graphicsFamily, indices.presentFamily]
@@ -270,6 +270,38 @@ proc createSwapChain(): tuple[swapChain: VkSwapchainKHR, swapChainImageFormat: V
   swapChainImages.setLen(imageCount)
   discard vkGetSwapchainImagesKHR(device, result.swapChain, imageCount.addr, swapChainImages[0].addr)
 
+proc createShaderModule(code: string): VkShaderModule =
+  var createInfo = VkShaderModuleCreateInfo(
+    sType: VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+    codeSize: code.len.uint32,
+    pCode: cast[ptr uint32](code.unsafeAddr)
+  )
+  if vkCreateShaderModule(device, createInfo.addr, nil, result.addr) != VK_SUCCESS:
+    quit("failed to create shader module")
+
+proc createGraphicsPipeline() =
+  const
+    vertShaderCode = staticRead("shaders/vert.spv")
+    fragShaderCode = staticRead("shaders/frag.spv")
+  let
+    vertShaderModule = createShaderModule(vertShaderCode)
+    fragShaderModule = createShaderModule(fragShaderCode)
+    vertShaderStageInfo = VkPipelineShaderStageCreateInfo(
+      sType: VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+      stage: VK_SHADER_STAGE_VERTEX_BIT,
+      module: vertShaderModule,
+      pName: "main",
+    )
+    fragShaderStageInfo = VkPipelineShaderStageCreateInfo(
+      sType: VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+      stage: cast[VkShaderStageFlagBits](0x00000010), # VK_SHADER_STAGE_FRAGMENT_BIT
+      module: fragShaderModule,
+      pName: "main",
+    )
+    shaderStages = [vertShaderStageInfo, fragShaderStageInfo]
+  vkDestroyShaderModule(device, vertShaderModule, nil)
+  vkDestroyShaderModule(device, fragShaderModule, nil)
+
 proc init*(glfwExtensions: cstringArray, glfwExtensionCount: uint32, createSurface: CreateSurfaceProc) =
   doAssert vkInit()
   # step 1: instance and physical device selection
@@ -279,10 +311,13 @@ proc init*(glfwExtensions: cstringArray, glfwExtensionCount: uint32, createSurfa
   # step 2: logical device and queue families
   device = createLogicalDevice()
   # step 3: swap chain
-  let ret = createSwapChain()
-  swapChain = ret.swapChain
-  swapChainImageFormat = ret.swapChainImageFormat
-  swapChainExtent = ret.swapChainExtent
+  block:
+    let ret = createSwapChain()
+    swapChain = ret.swapChain
+    swapChainImageFormat = ret.swapChainImageFormat
+    swapChainExtent = ret.swapChainExtent
+  # step 4: graphics pipeline
+  createGraphicsPipeline()
 
 proc deinit*() =
   vkDestroySwapchainKHR(device, swapChain, nil)
