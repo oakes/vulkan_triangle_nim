@@ -1,5 +1,6 @@
 import nimgl/vulkan
 import sets
+import bitops
 
 type
   CreateSurfaceProc = proc (instance: VkInstance): VkSurfaceKHR
@@ -344,6 +345,42 @@ proc createGraphicsPipeline() =
       depthBiasConstantFactor: 0f, # optional
       depthBiasClamp: 0f, # optional
       depthBiasSlopeFactor: 0f, # optional
+    )
+    multisampling = VkPipelineMultisampleStateCreateInfo(
+      sType: VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+      sampleShadingEnable: VkBool32(VK_FALSE),
+      rasterizationSamples: VK_SAMPLE_COUNT_1_BIT,
+      minSampleShading: 1f, # optional
+      pSampleMask: nil, # optional
+      alphaToCoverageEnable: VkBool32(VK_FALSE), # optional
+      alphaToOneEnable: VkBool32(VK_FALSE), # optional
+    )
+    colorBlendAttachment = VkPipelineColorBlendAttachmentState(
+      colorWriteMask: VkColorComponentFlags(
+        bitor(
+        0x00000001, # VK_COLOR_COMPONENT_R_BIT
+        bitor(
+        0x00000002, # VK_COLOR_COMPONENT_G_BIT
+        bitor(
+        0x00000004, # VK_COLOR_COMPONENT_B_BIT
+        0x00000008, # VK_COLOR_COMPONENT_A_BIT
+        )))
+      ),
+      blendEnable: VkBool32(VK_FALSE),
+      srcColorBlendFactor: VK_BLEND_FACTOR_ONE, # optional
+      dstColorBlendFactor: VK_BLEND_FACTOR_ZERO, # optional
+      colorBlendOp: VK_BLEND_OP_ADD, # optional
+      srcAlphaBlendFactor: VK_BLEND_FACTOR_ONE, # optional
+      dstAlphaBlendFactor: VK_BLEND_FACTOR_ZERO, # optional
+      alphaBlendOp: VK_BLEND_OP_ADD, # optional
+    )
+    colorBlending = VkPipelineColorBlendStateCreateInfo(
+      sType: VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+      logicOpEnable: VkBool32(VK_FALSE),
+      logicOp: VK_LOGIC_OP_COPY, # optional
+      attachmentCount: 1,
+      pAttachments: colorBlendAttachment.addr,
+      blendConstants: [0.0, 0.0, 0.0, 0.0], # optional
     )
   vkDestroyShaderModule(device, vertShaderModule, nil)
   vkDestroyShaderModule(device, fragShaderModule, nil)
