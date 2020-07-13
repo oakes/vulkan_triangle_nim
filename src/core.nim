@@ -285,7 +285,7 @@ proc createGraphicsPipeline() =
   const
     vertShaderCode = staticRead("shaders/vert.spv")
     fragShaderCode = staticRead("shaders/frag.spv")
-  let
+  var
     vertShaderModule = createShaderModule(vertShaderCode)
     fragShaderModule = createShaderModule(fragShaderCode)
     vertShaderStageInfo = VkPipelineShaderStageCreateInfo(
@@ -296,7 +296,7 @@ proc createGraphicsPipeline() =
     )
     fragShaderStageInfo = VkPipelineShaderStageCreateInfo(
       sType: VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-      stage: cast[VkShaderStageFlagBits](0x00000010), # VK_SHADER_STAGE_FRAGMENT_BIT
+      stage: VkShaderStageFlagBits(0x00000010), # VK_SHADER_STAGE_FRAGMENT_BIT
       module: fragShaderModule,
       pName: "main",
     )
@@ -319,7 +319,31 @@ proc createGraphicsPipeline() =
       width: swapChainExtent.width.float,
       height: swapChainExtent.height.float,
       minDepth: 0f,
-      maxDepth: 1f
+      maxDepth: 1f,
+    )
+    scissor = VkRect2D(
+      offset: VkOffset2D(x: 0, y: 0),
+      extent: swapChainExtent,
+    )
+    viewportState = VkPipelineViewportStateCreateInfo(
+      sType: VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+      viewportCount: 1,
+      pViewports: viewport.addr,
+      scissorCount: 1,
+      pScissors: scissor.addr,
+    )
+    rasterizer = VkPipelineRasterizationStateCreateInfo(
+      sType: VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+      depthClampEnable: VkBool32(VK_FALSE),
+      rasterizerDiscardEnable: VkBool32(VK_FALSE),
+      polygonMode: VK_POLYGON_MODE_FILL,
+      lineWidth: 1f,
+      cullMode: VkCullModeFlags(0x00000002), # VK_CULL_MODE_BACK_BIT
+      frontFace: VK_FRONT_FACE_CLOCKWISE,
+      depthBiasEnable: VkBool32(VK_FALSE),
+      depthBiasConstantFactor: 0f, # optional
+      depthBiasClamp: 0f, # optional
+      depthBiasSlopeFactor: 0f, # optional
     )
   vkDestroyShaderModule(device, vertShaderModule, nil)
   vkDestroyShaderModule(device, fragShaderModule, nil)
