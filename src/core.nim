@@ -9,6 +9,12 @@ type
     graphicsFamilyFound: bool
     presentFamily: uint32
     presentFamilyFound: bool
+  SwapChain = tuple[
+    swapChain: VkSwapchainKHR,
+    swapChainImages: seq[VkImage],
+    swapChainImageFormat: VkFormat,
+    swapChainExtent: VkExtent2D,
+  ]
   SwapChainSupportDetails = object
     capabilities: VkSurfaceCapabilitiesKHR
     formats: seq[VkSurfaceFormatKHR]
@@ -27,10 +33,8 @@ var
   surface: VkSurfaceKHR
   graphicsQueue: VkQueue
   presentQueue: VkQueue
-  swapChain: VkSwapchainKHR
-  swapChainImages: seq[VkImage]
-  swapChainImageFormat: VkFormat
-  swapChainExtent: VkExtent2D
+  swapChain: SwapChain
+  pipelineLayout: VkPipelineLayout
 
 loadVK_KHR_surface()
 loadVK_KHR_swapchain()
@@ -230,7 +234,7 @@ proc chooseSwapExtent(capabilities: VkSurfaceCapabilitiesKHR): VkExtent2D =
         min(capabilities.maxImageExtent.height, result.height)
       )
 
-proc createSwapChain(): tuple[swapChain: VkSwapchainKHR, swapChainImageFormat: VkFormat, swapChainExtent: VkExtent2D] =
+proc createSwapChain(): SwapChain =
   let
     swapChainSupport = querySwapChainSupport(physicalDevice)
     surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats)
@@ -268,8 +272,8 @@ proc createSwapChain(): tuple[swapChain: VkSwapchainKHR, swapChainImageFormat: V
   if vkCreateSwapChainKHR(device, createInfo.addr, nil, result.swapChain.addr) != VK_SUCCESS:
     quit("failed to create swap chain")
   discard vkGetSwapchainImagesKHR(device, result.swapChain, imageCount.addr, nil)
-  swapChainImages.setLen(imageCount)
-  discard vkGetSwapchainImagesKHR(device, result.swapChain, imageCount.addr, swapChainImages[0].addr)
+  result.swapChainImages.setLen(imageCount)
+  discard vkGetSwapchainImagesKHR(device, result.swapChain, imageCount.addr, result.swapChainImages[0].addr)
   result.swapChainImageFormat = surfaceFormat.format
   result.swapChainExtent = extent
 
@@ -282,7 +286,7 @@ proc createShaderModule(code: string): VkShaderModule =
   if vkCreateShaderModule(device, createInfo.addr, nil, result.addr) != VK_SUCCESS:
     quit("failed to create shader module")
 
-proc createGraphicsPipeline() =
+proc createGraphicsPipeline(): VkPipelineLayout =
   const
     vertShaderCode = staticRead("shaders/vert.spv")
     fragShaderCode = staticRead("shaders/frag.spv")
@@ -317,14 +321,14 @@ proc createGraphicsPipeline() =
     viewport = VkViewport(
       x: 0f,
       y: 0f,
-      width: swapChainExtent.width.float,
-      height: swapChainExtent.height.float,
+      width: swapChain.swapChainExtent.width.float,
+      height: swapChain.swapChainExtent.height.float,
       minDepth: 0f,
       maxDepth: 1f,
     )
     scissor = VkRect2D(
       offset: VkOffset2D(x: 0, y: 0),
-      extent: swapChainExtent,
+      extent: swapChain.swapChainExtent,
     )
     viewportState = VkPipelineViewportStateCreateInfo(
       sType: VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
@@ -382,6 +386,21 @@ proc createGraphicsPipeline() =
       pAttachments: colorBlendAttachment.addr,
       blendConstants: [0.0, 0.0, 0.0, 0.0], # optional
     )
+    dynamicStates = [VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_LINE_WIDTH]
+    dynamicState = VkPipelineDynamicStateCreateInfo(
+      sType: VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+      dynamicStateCount: 2,
+      pDynamicStates: cast[ptr VkDynamicState](dynamicStates.addr),
+    )
+    pipelineLayoutInfo = VkPipelineLayoutCreateInfo(
+      sType: VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+      setLayoutCount: 0, # optional
+      pSetLayouts: nil, # optional
+      pushConstantRangeCount: 0, # optional
+      pPushConstantRanges: nil, # optional
+    )
+  if vkCreatePipelineLayout(device, pipelineLayoutInfo.addr, nil, result.addr) != VK_SUCCESS:
+    quit("failed to create pipeline layout")
   vkDestroyShaderModule(device, vertShaderModule, nil)
   vkDestroyShaderModule(device, fragShaderModule, nil)
 
@@ -394,16 +413,13 @@ proc init*(glfwExtensions: cstringArray, glfwExtensionCount: uint32, createSurfa
   # step 2: logical device and queue families
   device = createLogicalDevice()
   # step 3: swap chain
-  block:
-    let ret = createSwapChain()
-    swapChain = ret.swapChain
-    swapChainImageFormat = ret.swapChainImageFormat
-    swapChainExtent = ret.swapChainExtent
+  swapChain = createSwapChain()
   # step 4: graphics pipeline
-  createGraphicsPipeline()
+  pipelineLayout = createGraphicsPipeline()
 
 proc deinit*() =
-  vkDestroySwapchainKHR(device, swapChain, nil)
+  vkDestroyPipelineLayout(device, pipelineLayout, nil)
+  vkDestroySwapchainKHR(device, swapChain.swapChain, nil)
   vkDestroyDevice(device, nil)
   vkDestroySurfaceKHR(instance, surface, nil)
   vkDestroyInstance(instance, nil)
