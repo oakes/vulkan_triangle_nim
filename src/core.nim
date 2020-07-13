@@ -301,6 +301,26 @@ proc createGraphicsPipeline() =
       pName: "main",
     )
     shaderStages = [vertShaderStageInfo, fragShaderStageInfo]
+    vertexInputInfo = VkPipelineVertexInputStateCreateInfo(
+      sType: VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+      vertexBindingDescriptionCount: 0,
+      pVertexBindingDescriptions: nil, # optional
+      vertexAttributeDescriptionCount: 0,
+      pVertexAttributeDescriptions: nil, # optional
+    )
+    inputAssembly = VkPipelineInputAssemblyStateCreateInfo(
+      sType: VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+      topology: VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+      primitiveRestartEnable: VkBool32(VK_FALSE),
+    )
+    viewport = VkViewport(
+      x: 0f,
+      y: 0f,
+      width: swapChainExtent.width.float,
+      height: swapChainExtent.height.float,
+      minDepth: 0f,
+      maxDepth: 1f
+    )
   vkDestroyShaderModule(device, vertShaderModule, nil)
   vkDestroyShaderModule(device, fragShaderModule, nil)
 
