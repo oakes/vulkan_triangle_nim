@@ -269,6 +269,8 @@ proc createSwapChain(): tuple[swapChain: VkSwapchainKHR, swapChainImageFormat: V
   discard vkGetSwapchainImagesKHR(device, result.swapChain, imageCount.addr, nil)
   swapChainImages.setLen(imageCount)
   discard vkGetSwapchainImagesKHR(device, result.swapChain, imageCount.addr, swapChainImages[0].addr)
+  result.swapChainImageFormat = surfaceFormat.format
+  result.swapChainExtent = extent
 
 proc createShaderModule(code: string): VkShaderModule =
   var createInfo = VkShaderModuleCreateInfo(
