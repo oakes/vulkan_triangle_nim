@@ -45,12 +45,6 @@ var
 loadVK_KHR_surface()
 loadVK_KHR_swapchain()
 
-proc toString(chars: openArray[char]): string =
-  result = ""
-  for c in chars:
-    if c != '\0':
-      result.add(c)
-
 proc checkValidationLayers() =
   var layerCount: uint32 = 0
   discard vkEnumerateInstanceLayerProperties(layerCount.addr, nil)
@@ -60,8 +54,9 @@ proc checkValidationLayers() =
   for validate in validationLayers:
     var found = false
     for layer in layers:
-      if layer.layerName.toString() == validate:
+      if cstring(layer.layerName.unsafeAddr) == validate:
         found = true
+        break
     if not found:
       echo validate & " layer is not supported"
 
