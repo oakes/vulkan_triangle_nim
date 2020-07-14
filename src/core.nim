@@ -23,6 +23,10 @@ type
     pipelineLayout: VkPipelineLayout,
     pipeline: VkPipeline,
   ]
+  Semaphores = tuple[
+    imageAvailable: VkSemaphore,
+    renderFinished: VkSemaphore,
+  ]
 
 const
   validationLayers = ["VK_LAYER_LUNARG_standard_validation"]
@@ -45,6 +49,7 @@ var
   swapChainFrameBuffers: seq[VkFramebuffer]
   commandPool: VkCommandPool
   commandBuffers: seq[VkCommandBuffer]
+  semaphores: Semaphores
 
 loadVK_KHR_surface()
 loadVK_KHR_swapchain()
@@ -476,12 +481,22 @@ proc createRenderPass(): VkRenderPass =
       colorAttachmentCount: 1,
       pColorAttachments: colorAttachmentRef.addr,
     )
+    dependency = VkSubpassDependency(
+      srcSubpass: VK_SUBPASS_EXTERNAL,
+      dstSubpass: 0,
+      srcStageMask: VkPipelineStageFlags(0x00000400), #VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+      srcAccessMask: VkAccessFlags(0),
+      dstStageMask: VkPipelineStageFlags(0x00000400), #VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+      dstAccessMask: VkAccessFlags(0x00000100), #VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+    )
     renderPassInfo = VkRenderPassCreateInfo(
       sType: VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
       attachmentCount: 1,
       pAttachments: colorAttachment.addr,
       subpassCount: 1,
       pSubpasses: subpass.addr,
+      dependencyCount: 1,
+      pDependencies: dependency.addr,
     )
   if vkCreateRenderPass(device, renderPassInfo.addr, nil, result.addr) != VK_SUCCESS:
     quit("failed to create render pass")
@@ -556,6 +571,14 @@ proc createCommandBuffers(): seq[VkCommandBuffer] =
     if vkEndCommandBuffer(result[i]) != VK_SUCCESS:
       quit("failed to record command buffer")
 
+proc createSemaphores(): Semaphores =
+  var semaphoreInfo = VkSemaphoreCreateInfo(
+    sType: VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+  )
+  if vkCreateSemaphore(device, semaphoreInfo.addr, nil, result.imageAvailable.addr) != VK_SUCCESS or
+    vkCreateSemaphore(device, semaphoreInfo.addr, nil, result.renderFinished.addr) != VK_SUCCESS:
+    quit("failed to create semaphores")
+
 proc init*(glfwExtensions: cstringArray, glfwExtensionCount: uint32, createSurface: CreateSurfaceProc) =
   doAssert vkInit()
   instance = createInstance(glfwExtensions, glfwExtensionCount)
@@ -569,8 +592,45 @@ proc init*(glfwExtensions: cstringArray, glfwExtensionCount: uint32, createSurfa
   swapChainFramebuffers = createFramebuffers()
   commandPool = createCommandPool()
   commandBuffers = createCommandBuffers()
+  semaphores = createSemaphores()
+
+proc tick*() =
+  var imageIndex: uint32
+  discard vkAcquireNextImageKHR(device, swapChain.swapChain, uint64.high, semaphores.imageAvailable, VkFence(VK_NULL_HANDLE), imageIndex.addr)
+  var
+    waitSemaphores = [semaphores.imageAvailable]
+    waitStages = [
+      VkPipelineStageFlags(0x00000400), # VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+    ]
+    signalSemaphores = [semaphores.renderFinished]
+    submitInfo = VkSubmitInfo(
+      sType: VK_STRUCTURE_TYPE_SUBMIT_INFO,
+      waitSemaphoreCount: waitSemaphores.len.uint32,
+      pWaitSemaphores: waitSemaphores[0].addr,
+      pWaitDstStageMask: waitStages[0].addr,
+      commandBufferCount: 1,
+      pCommandBuffers: commandBuffers[imageIndex].addr,
+      signalSemaphoreCount: 1,
+      pSignalSemaphores: signalSemaphores[0].addr,
+    )
+  if vkQueueSubmit(graphicsQueue, 1, submitInfo.addr, VkFence(VK_NULL_HANDLE)) != VK_SUCCESS:
+    quit("failed to submit draw command buffer")
+  var
+    swapChains = [swapChain.swapChain]
+    presentInfo = VkPresentInfoKHR(
+      sType: cast[VkStructureType](1000001001), # VK_STRUCTURE_TYPE_PRESENT_INFO_KHR
+      waitSemaphoreCount: 1,
+      pWaitSemaphores: signalSemaphores[0].addr,
+      swapchainCount: 1,
+      pSwapChains: swapChains[0].addr,
+      pImageIndices: imageIndex.addr,
+      pResults: nil,
+    )
+  discard vkQueuePresentKHR(presentQueue, presentInfo.addr)
 
 proc deinit*() =
+  vkDestroySemaphore(device, semaphores.renderFinished, nil)
+  vkDestroySemaphore(device, semaphores.imageAvailable, nil)
   vkDestroyCommandPool(device, commandPool, nil)
   for framebuffer in swapChainFramebuffers:
     vkDestroyFramebuffer(device, framebuffer, nil)

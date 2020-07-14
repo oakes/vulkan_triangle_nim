@@ -29,6 +29,7 @@ if isMainModule:
 
   while not w.windowShouldClose():
     glfwPollEvents()
+    core.tick()
 
   core.deinit()
   w.destroyWindow()
