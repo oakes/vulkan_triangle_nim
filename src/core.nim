@@ -629,6 +629,7 @@ proc tick*() =
   discard vkQueuePresentKHR(presentQueue, presentInfo.addr)
 
 proc deinit*() =
+  discard vkDeviceWaitIdle(device)
   vkDestroySemaphore(device, semaphores.renderFinished, nil)
   vkDestroySemaphore(device, semaphores.imageAvailable, nil)
   vkDestroyCommandPool(device, commandPool, nil)
