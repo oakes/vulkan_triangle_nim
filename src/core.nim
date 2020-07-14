@@ -485,7 +485,21 @@ proc createRenderPass(): VkRenderPass =
     quit("failed to create render pass")
 
 proc createFramebuffers(): seq[VkFramebuffer] =
-  result
+  result.setLen(swapChainImageViews.len)
+  for i in 0 ..< swapChainImageViews.len:
+    var
+      attachments = [swapChainImageViews[i]]
+      framebufferInfo = VkFramebufferCreateInfo(
+        sType: VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+        renderPass: renderPass,
+        attachmentCount: attachments.len.uint32,
+        pAttachments: attachments[0].addr,
+        width: swapChain.swapChainExtent.width,
+        height: swapChain.swapChainExtent.height,
+        layers: 1,
+      )
+    if vkCreateFramebuffer(device, framebufferInfo.addr, nil, result[i].addr) != VK_SUCCESS:
+      quit("failed to create framebuffer")
 
 proc init*(glfwExtensions: cstringArray, glfwExtensionCount: uint32, createSurface: CreateSurfaceProc) =
   doAssert vkInit()
@@ -500,6 +514,8 @@ proc init*(glfwExtensions: cstringArray, glfwExtensionCount: uint32, createSurfa
   swapChainFramebuffers = createFramebuffers()
 
 proc deinit*() =
+  for framebuffer in swapChainFramebuffers:
+    vkDestroyFramebuffer(device, framebuffer, nil)
   vkDestroyPipeline(device, graphicsPipeline.pipeline, nil)
   vkDestroyPipelineLayout(device, graphicsPipeline.pipelineLayout, nil)
   vkDestroyRenderPass(device, renderPass, nil)
