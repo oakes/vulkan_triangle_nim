@@ -43,6 +43,7 @@ var
   renderPass: VkRenderPass
   graphicsPipeline: GraphicsPipeline
   swapChainFrameBuffers: seq[VkFramebuffer]
+  commandPool: VkCommandPool
 
 loadVK_KHR_surface()
 loadVK_KHR_swapchain()
@@ -501,6 +502,17 @@ proc createFramebuffers(): seq[VkFramebuffer] =
     if vkCreateFramebuffer(device, framebufferInfo.addr, nil, result[i].addr) != VK_SUCCESS:
       quit("failed to create framebuffer")
 
+proc createCommandPool(): VkCommandPool =
+  var
+    queueFamilyIndices = findQueueFamilies(physicalDevice)
+    poolInfo = VkCommandPoolCreateInfo(
+      sType: VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+      queueFamilyIndex: queueFamilyIndices.graphicsFamily,
+      flags: VkCommandPoolCreateFlags(0), # optional
+    )
+  if vkCreateCommandPool(device, poolInfo.addr, nil, result.addr) != VK_SUCCESS:
+    quit("failed to create command pool")
+
 proc init*(glfwExtensions: cstringArray, glfwExtensionCount: uint32, createSurface: CreateSurfaceProc) =
   doAssert vkInit()
   instance = createInstance(glfwExtensions, glfwExtensionCount)
@@ -512,8 +524,10 @@ proc init*(glfwExtensions: cstringArray, glfwExtensionCount: uint32, createSurfa
   renderPass = createRenderPass()
   graphicsPipeline = createGraphicsPipeline()
   swapChainFramebuffers = createFramebuffers()
+  commandPool = createCommandPool()
 
 proc deinit*() =
+  vkDestroyCommandPool(device, commandPool, nil)
   for framebuffer in swapChainFramebuffers:
     vkDestroyFramebuffer(device, framebuffer, nil)
   vkDestroyPipeline(device, graphicsPipeline.pipeline, nil)
