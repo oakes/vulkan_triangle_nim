@@ -39,8 +39,10 @@ var
   graphicsQueue: VkQueue
   presentQueue: VkQueue
   swapChain: SwapChain
+  swapChainImageViews: seq[VkImageView]
   renderPass: VkRenderPass
   graphicsPipeline: GraphicsPipeline
+  swapChainFrameBuffers: seq[VkFramebuffer]
 
 loadVK_KHR_surface()
 loadVK_KHR_swapchain()
@@ -278,6 +280,31 @@ proc createSwapChain(): SwapChain =
   result.swapChainImageFormat = surfaceFormat.format
   result.swapChainExtent = extent
 
+proc createImageViews(): seq[VkImageView] =
+  result.setLen(swapChain.swapChainImages.len)
+  for i in 0 ..< swapChain.swapChainImages.len:
+    var createInfo = VkImageViewCreateInfo(
+      sType: VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+      image: swapChain.swapChainImages[i],
+      viewType: VK_IMAGE_VIEW_TYPE_2D,
+      format: swapChain.swapChainImageFormat,
+      components: VkComponentMapping(
+        r: VK_COMPONENT_SWIZZLE_IDENTITY,
+        g: VK_COMPONENT_SWIZZLE_IDENTITY,
+        b: VK_COMPONENT_SWIZZLE_IDENTITY,
+        a: VK_COMPONENT_SWIZZLE_IDENTITY,
+      ),
+      subresourceRange: VkImageSubresourceRange(
+        aspectMask: VkImageAspectFlags(VK_IMAGE_ASPECT_COLOR_BIT),
+        baseMipLevel: 0,
+        levelCount: 1,
+        baseArrayLayer: 0,
+        layerCount: 1,
+      ),
+    )
+    if vkCreateImageView(device, createInfo.addr, nil, result[i].addr) != VK_SUCCESS:
+      quit("failed to create image view")
+
 proc createShaderModule(code: string): VkShaderModule =
   var createInfo = VkShaderModuleCreateInfo(
     sType: VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
@@ -457,6 +484,9 @@ proc createRenderPass(): VkRenderPass =
   if vkCreateRenderPass(device, renderPassInfo.addr, nil, result.addr) != VK_SUCCESS:
     quit("failed to create render pass")
 
+proc createFramebuffers(): seq[VkFramebuffer] =
+  result
+
 proc init*(glfwExtensions: cstringArray, glfwExtensionCount: uint32, createSurface: CreateSurfaceProc) =
   doAssert vkInit()
   instance = createInstance(glfwExtensions, glfwExtensionCount)
@@ -464,13 +494,17 @@ proc init*(glfwExtensions: cstringArray, glfwExtensionCount: uint32, createSurfa
   physicalDevice = pickPhysicalDevice()
   device = createLogicalDevice()
   swapChain = createSwapChain()
+  swapChainImageViews = createImageViews()
   renderPass = createRenderPass()
   graphicsPipeline = createGraphicsPipeline()
+  swapChainFramebuffers = createFramebuffers()
 
 proc deinit*() =
   vkDestroyPipeline(device, graphicsPipeline.pipeline, nil)
   vkDestroyPipelineLayout(device, graphicsPipeline.pipelineLayout, nil)
   vkDestroyRenderPass(device, renderPass, nil)
+  for imageView in swapChainImageViews:
+    vkDestroyImageView(device, imageView, nil)
   vkDestroySwapchainKHR(device, swapChain.swapChain, nil)
   vkDestroyDevice(device, nil)
   vkDestroySurfaceKHR(instance, surface, nil)
