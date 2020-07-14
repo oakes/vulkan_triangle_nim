@@ -27,8 +27,8 @@ type
 const
   validationLayers = ["VK_LAYER_LUNARG_standard_validation"]
   deviceExtensions = ["VK_KHR_swapchain"]
-  WIDTH = 800
-  HEIGHT = 600
+  WIDTH* = 800
+  HEIGHT* = 600
   VK_NULL_HANDLE = 0
 
 var
