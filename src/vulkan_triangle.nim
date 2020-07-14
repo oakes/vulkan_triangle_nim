@@ -12,7 +12,7 @@ if isMainModule:
   glfwWindowHint(GLFWClientApi, GLFWNoApi)
   glfwWindowHint(GLFWResizable, GLFWFalse)
 
-  var w = glfwCreateWindow(800, 600, "Vulkan")
+  var w = glfwCreateWindow(800, 600, "Vulkan Triangle")
   if w == nil:
     quit(-1)
 
