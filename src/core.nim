@@ -44,6 +44,7 @@ var
   graphicsPipeline: GraphicsPipeline
   swapChainFrameBuffers: seq[VkFramebuffer]
   commandPool: VkCommandPool
+  commandBuffers: seq[VkCommandBuffer]
 
 loadVK_KHR_surface()
 loadVK_KHR_swapchain()
@@ -513,6 +514,48 @@ proc createCommandPool(): VkCommandPool =
   if vkCreateCommandPool(device, poolInfo.addr, nil, result.addr) != VK_SUCCESS:
     quit("failed to create command pool")
 
+proc createCommandBuffers(): seq[VkCommandBuffer] =
+  result.setLen(swapChainFramebuffers.len)
+  var
+    allocInfo = VkCommandBufferAllocateInfo(
+      sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+      commandPool: commandPool,
+      level: VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+      commandBufferCount: result.len.uint32,
+    )
+  if vkAllocateCommandBuffers(device, allocInfo.addr, result[0].addr) != VK_SUCCESS:
+    quit("failed to allocate command buffers")
+  for i in 0 ..< result.len:
+    var
+      beginInfo = VkCommandBufferBeginInfo(
+        sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        flags: VkCommandBufferUsageFlags(0), # optional
+        pInheritanceInfo: nil,
+      )
+    if vkBeginCommandBuffer(result[i], beginInfo.addr) != VK_SUCCESS:
+      quit("failed to begin recording command buffer")
+    var
+      clearColor = VkClearValue(
+        color: VkClearColorValue(float32: [0f, 0f, 0f, 1f]),
+      )
+      renderPassInfo = VkRenderPassBeginInfo(
+        sType: VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+        renderPass: renderPass,
+        framebuffer: swapChainFramebuffers[i],
+        renderArea: VkRect2d(
+          offset: VkOffset2d(x: 0, y: 0),
+          extent: swapChain.swapChainExtent,
+        ),
+        clearValueCount: 1,
+        pClearValues: clearColor.addr,
+      )
+    vkCmdBeginRenderPass(result[i], renderPassInfo.addr, VK_SUBPASS_CONTENTS_INLINE)
+    vkCmdBindPipeline(result[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline.pipeline)
+    vkCmdDraw(result[i], 3, 1, 0, 0)
+    vkCmdEndRenderPass(result[i])
+    if vkEndCommandBuffer(result[i]) != VK_SUCCESS:
+      quit("failed to record command buffer")
+
 proc init*(glfwExtensions: cstringArray, glfwExtensionCount: uint32, createSurface: CreateSurfaceProc) =
   doAssert vkInit()
   instance = createInstance(glfwExtensions, glfwExtensionCount)
@@ -525,6 +568,7 @@ proc init*(glfwExtensions: cstringArray, glfwExtensionCount: uint32, createSurfa
   graphicsPipeline = createGraphicsPipeline()
   swapChainFramebuffers = createFramebuffers()
   commandPool = createCommandPool()
+  commandBuffers = createCommandBuffers()
 
 proc deinit*() =
   vkDestroyCommandPool(device, commandPool, nil)
