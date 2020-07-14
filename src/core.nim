@@ -464,15 +464,11 @@ proc createRenderPass(): VkRenderPass =
 
 proc init*(glfwExtensions: cstringArray, glfwExtensionCount: uint32, createSurface: CreateSurfaceProc) =
   doAssert vkInit()
-  # step 1: instance and physical device selection
   instance = createInstance(glfwExtensions, glfwExtensionCount)
-  surface = createSurface(instance) # step 3: window surface
+  surface = createSurface(instance)
   physicalDevice = pickPhysicalDevice()
-  # step 2: logical device and queue families
   device = createLogicalDevice()
-  # step 3: swap chain
   swapChain = createSwapChain()
-  # step 4: graphics pipeline
   renderPass = createRenderPass()
   graphicsPipeline = createGraphicsPipeline()
 
