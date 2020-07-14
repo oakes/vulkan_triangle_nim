@@ -95,7 +95,7 @@ proc createLogicalDevice(): VkDevice =
     indices = physicalDevice.findQueueFamilies()
     uniqueQueueFamilies = [indices.graphicsFamily, indices.presentFamily].toHashSet
   var
-    queuePriority = 1.0
+    queuePriority = 1f
     queueCreateInfos = newSeq[VkDeviceQueueCreateInfo]()
 
   for queueFamily in uniqueQueueFamilies:
@@ -390,7 +390,7 @@ proc createGraphicsPipeline(): GraphicsPipeline =
       logicOp: VK_LOGIC_OP_COPY, # optional
       attachmentCount: 1,
       pAttachments: colorBlendAttachment.addr,
-      blendConstants: [0.0, 0.0, 0.0, 0.0], # optional
+      blendConstants: [0f, 0f, 0f, 0f], # optional
     )
     dynamicStates = [VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_LINE_WIDTH]
     dynamicState = VkPipelineDynamicStateCreateInfo(
