@@ -9,24 +9,21 @@ type
     graphicsFamilyFound: bool
     presentFamily: uint32
     presentFamilyFound: bool
-  SwapChain = tuple[
-    swapChain: VkSwapchainKHR,
-    swapChainImages: seq[VkImage],
-    swapChainImageFormat: VkFormat,
-    swapChainExtent: VkExtent2D,
-  ]
+  SwapChain = object
+    swapChain: VkSwapchainKHR
+    swapChainImages: seq[VkImage]
+    swapChainImageFormat: VkFormat
+    swapChainExtent: VkExtent2D
   SwapChainSupportDetails = object
     capabilities: VkSurfaceCapabilitiesKHR
     formats: seq[VkSurfaceFormatKHR]
     presentModes: seq[VkPresentModeKHR]
-  GraphicsPipeline = tuple[
-    pipelineLayout: VkPipelineLayout,
-    pipeline: VkPipeline,
-  ]
-  Semaphores = tuple[
-    imageAvailable: VkSemaphore,
-    renderFinished: VkSemaphore,
-  ]
+  GraphicsPipeline = object
+    pipelineLayout: VkPipelineLayout
+    pipeline: VkPipeline
+  Semaphores = object
+    imageAvailable: VkSemaphore
+    renderFinished: VkSemaphore
 
 const
   validationLayers = ["VK_LAYER_LUNARG_standard_validation"]
