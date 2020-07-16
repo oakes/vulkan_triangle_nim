@@ -32,22 +32,6 @@ const
   HEIGHT* = 600
   VK_NULL_HANDLE = 0
 
-var
-  instance: VkInstance
-  physicalDevice: VkPhysicalDevice
-  device: VkDevice
-  surface: VkSurfaceKHR
-  graphicsQueue: VkQueue
-  presentQueue: VkQueue
-  swapChain: SwapChain
-  swapChainImageViews: seq[VkImageView]
-  renderPass: VkRenderPass
-  graphicsPipeline: GraphicsPipeline
-  swapChainFrameBuffers: seq[VkFramebuffer]
-  commandPool: VkCommandPool
-  commandBuffers: seq[VkCommandBuffer]
-  semaphores: Semaphores
-
 loadVK_KHR_surface()
 loadVK_KHR_swapchain()
 
@@ -69,7 +53,7 @@ proc checkValidationLayers() =
 proc isComplete(indices: QueueFamilyIndices): bool =
   indices.graphicsFamilyFound and indices.presentFamilyFound
 
-proc findQueueFamilies(pDevice: VkPhysicalDevice): QueueFamilyIndices =
+proc findQueueFamilies(pDevice: VkPhysicalDevice, surface: VkSurfaceKHR): QueueFamilyIndices =
   result.graphicsFamilyFound = false
 
   var queueFamilyCount: uint32 = 0
@@ -91,9 +75,9 @@ proc findQueueFamilies(pDevice: VkPhysicalDevice): QueueFamilyIndices =
       break
     index.inc
 
-proc createLogicalDevice(): VkDevice =
+proc createLogicalDevice(physicalDevice: VkPhysicalDevice, surface: VkSurfaceKHR, graphicsQueue: var VkQueue, presentQueue: var VkQueue): VkDevice =
   let
-    indices = physicalDevice.findQueueFamilies()
+    indices = findQueueFamilies(physicalDevice, surface)
     uniqueQueueFamilies = [indices.graphicsFamily, indices.presentFamily].toHashSet
   var
     queuePriority = 1f
@@ -140,7 +124,7 @@ proc checkDeviceExtensionSupport(pDevice: VkPhysicalDevice): bool =
     requiredExts.excl($ ext.extensionName.addr)
   requiredExts.len == 0
 
-proc querySwapChainSupport(pDevice: VkPhysicalDevice): SwapChainSupportDetails =
+proc querySwapChainSupport(pDevice: VkPhysicalDevice, surface: VkSurfaceKHR): SwapChainSupportDetails =
   discard vkGetPhysicalDeviceSurfaceCapabilitiesKHR(pDevice, surface, result.capabilities.addr)
   var formatCount: uint32
   discard vkGetPhysicalDeviceSurfaceFormatsKHR(pDevice, surface, formatCount.addr, nil)
@@ -153,7 +137,7 @@ proc querySwapChainSupport(pDevice: VkPhysicalDevice): SwapChainSupportDetails =
     result.presentModes.setLen(presentModeCount)
     discard vkGetPhysicalDeviceSurfacePresentModesKHR(pDevice, surface, presentModeCount.addr, result.presentModes[0].addr)
 
-proc isDeviceSuitable(pDevice: VkPhysicalDevice): bool =
+proc isDeviceSuitable(pDevice: VkPhysicalDevice, surface: VkSurfaceKHR): bool =
   var deviceProperties: VkPhysicalDeviceProperties
   vkGetPhysicalDeviceProperties(pDevice, deviceProperties.addr)
 
@@ -164,12 +148,12 @@ proc isDeviceSuitable(pDevice: VkPhysicalDevice): bool =
 
   var swapChainAdequate = false
   if extsSupported:
-    let swapChainSupport = querySwapChainSupport(pDevice)
+    let swapChainSupport = querySwapChainSupport(pDevice, surface)
     swapChainAdequate =
       swapChainSupport.formats.len != 0 and
       swapChainSupport.presentModes.len != 0
 
-  let indices: QueueFamilyIndices = pDevice.findQueueFamilies
+  let indices: QueueFamilyIndices = findQueueFamilies(pDevice, surface)
   return indices.isComplete and extsSupported and swapChainAdequate
 
 proc createInstance(glfwExtensions: cstringArray, glfwExtensionCount: uint32): VkInstance =
@@ -200,14 +184,14 @@ proc createInstance(glfwExtensions: cstringArray, glfwExtensionCount: uint32): V
   # disabled for now
   #checkValidationLayers()
 
-proc pickPhysicalDevice(): VkPhysicalDevice =
+proc pickPhysicalDevice(instance: VkInstance, surface: VkSurfaceKHR): VkPhysicalDevice =
   var deviceCount: uint32 = 0
   discard vkEnumeratePhysicalDevices(instance, deviceCount.addr, nil)
   var devices = newSeq[VkPhysicalDevice](deviceCount)
   discard vkEnumeratePhysicalDevices(instance, deviceCount.addr, devices[0].addr)
 
   for pDevice in devices:
-    if pDevice.isDeviceSuitable():
+    if isDeviceSuitable(pDevice, surface):
       return pDevice
 
   raise newException(Exception, "Suitable physical device not found")
@@ -241,9 +225,9 @@ proc chooseSwapExtent(capabilities: VkSurfaceCapabilitiesKHR): VkExtent2D =
         min(capabilities.maxImageExtent.height, result.height)
       )
 
-proc createSwapChain(): SwapChain =
+proc createSwapChain(device: VkDevice, physicalDevice: VkPhysicalDevice, surface: VkSurfaceKHR): SwapChain =
   let
-    swapChainSupport = querySwapChainSupport(physicalDevice)
+    swapChainSupport = querySwapChainSupport(physicalDevice, surface)
     surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats)
     presentMode = chooseSwapPresentMode(swapChainSupport.presentModes)
     extent = chooseSwapExtent(swapChainSupport.capabilities)
@@ -261,7 +245,7 @@ proc createSwapChain(): SwapChain =
     imageArrayLayers: 1,
     imageUsage: VkImageUsageFlags(0x00000010), # VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
   )
-  let indices = physicalDevice.findQueueFamilies()
+  let indices = findQueueFamilies(physicalDevice, surface)
   var queueFamilyIndices = [indices.graphicsFamily, indices.presentFamily]
   if indices.graphicsFamily != indices.presentFamily:
     createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT
@@ -284,14 +268,14 @@ proc createSwapChain(): SwapChain =
   result.swapChainImageFormat = surfaceFormat.format
   result.swapChainExtent = extent
 
-proc createImageViews(): seq[VkImageView] =
-  result.setLen(swapChain.swapChainImages.len)
-  for i in 0 ..< swapChain.swapChainImages.len:
+proc createImageViews(device: VkDevice, swapChainImages: seq[VkImage], swapChainImageFormat: VkFormat): seq[VkImageView] =
+  result.setLen(swapChainImages.len)
+  for i in 0 ..< swapChainImages.len:
     var createInfo = VkImageViewCreateInfo(
       sType: VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-      image: swapChain.swapChainImages[i],
+      image: swapChainImages[i],
       viewType: VK_IMAGE_VIEW_TYPE_2D,
-      format: swapChain.swapChainImageFormat,
+      format: swapChainImageFormat,
       components: VkComponentMapping(
         r: VK_COMPONENT_SWIZZLE_IDENTITY,
         g: VK_COMPONENT_SWIZZLE_IDENTITY,
@@ -309,7 +293,7 @@ proc createImageViews(): seq[VkImageView] =
     if vkCreateImageView(device, createInfo.addr, nil, result[i].addr) != VK_SUCCESS:
       quit("failed to create image view")
 
-proc createShaderModule(code: string): VkShaderModule =
+proc createShaderModule(device: VkDevice, code: string): VkShaderModule =
   var createInfo = VkShaderModuleCreateInfo(
     sType: VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
     codeSize: code.len.uint32,
@@ -318,13 +302,13 @@ proc createShaderModule(code: string): VkShaderModule =
   if vkCreateShaderModule(device, createInfo.addr, nil, result.addr) != VK_SUCCESS:
     quit("failed to create shader module")
 
-proc createGraphicsPipeline(): GraphicsPipeline =
+proc createGraphicsPipeline(device: VkDevice, swapChainExtent: VkExtent2D, renderPass: VkRenderPass): GraphicsPipeline =
   const
     vertShaderCode = staticRead("shaders/vert.spv")
     fragShaderCode = staticRead("shaders/frag.spv")
   var
-    vertShaderModule = createShaderModule(vertShaderCode)
-    fragShaderModule = createShaderModule(fragShaderCode)
+    vertShaderModule = createShaderModule(device, vertShaderCode)
+    fragShaderModule = createShaderModule(device, fragShaderCode)
     vertShaderStageInfo = VkPipelineShaderStageCreateInfo(
       sType: VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
       stage: VK_SHADER_STAGE_VERTEX_BIT,
@@ -353,14 +337,14 @@ proc createGraphicsPipeline(): GraphicsPipeline =
     viewport = VkViewport(
       x: 0f,
       y: 0f,
-      width: swapChain.swapChainExtent.width.float,
-      height: swapChain.swapChainExtent.height.float,
+      width: swapChainExtent.width.float,
+      height: swapChainExtent.height.float,
       minDepth: 0f,
       maxDepth: 1f,
     )
     scissor = VkRect2D(
       offset: VkOffset2D(x: 0, y: 0),
-      extent: swapChain.swapChainExtent,
+      extent: swapChainExtent,
     )
     viewportState = VkPipelineViewportStateCreateInfo(
       sType: VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
@@ -457,10 +441,10 @@ proc createGraphicsPipeline(): GraphicsPipeline =
   vkDestroyShaderModule(device, vertShaderModule, nil)
   vkDestroyShaderModule(device, fragShaderModule, nil)
 
-proc createRenderPass(): VkRenderPass =
+proc createRenderPass(device: VkDevice, swapChainImageFormat: VkFormat): VkRenderPass =
   var
     colorAttachment = VkAttachmentDescription(
-      format: swapChain.swapChainImageFormat,
+      format: swapChainImageFormat,
       samples: VK_SAMPLE_COUNT_1_BIT,
       loadOp: VK_ATTACHMENT_LOAD_OP_CLEAR,
       storeOp: VK_ATTACHMENT_STORE_OP_STORE,
@@ -498,7 +482,7 @@ proc createRenderPass(): VkRenderPass =
   if vkCreateRenderPass(device, renderPassInfo.addr, nil, result.addr) != VK_SUCCESS:
     quit("failed to create render pass")
 
-proc createFramebuffers(): seq[VkFramebuffer] =
+proc createFramebuffers(device: VkDevice, swapChainExtent: VkExtent2D, swapChainImageViews: seq[VkImageView], renderPass: VkRenderPass): seq[VkFramebuffer] =
   result.setLen(swapChainImageViews.len)
   for i in 0 ..< swapChainImageViews.len:
     var
@@ -508,16 +492,16 @@ proc createFramebuffers(): seq[VkFramebuffer] =
         renderPass: renderPass,
         attachmentCount: attachments.len.uint32,
         pAttachments: attachments[0].addr,
-        width: swapChain.swapChainExtent.width,
-        height: swapChain.swapChainExtent.height,
+        width: swapChainExtent.width,
+        height: swapChainExtent.height,
         layers: 1,
       )
     if vkCreateFramebuffer(device, framebufferInfo.addr, nil, result[i].addr) != VK_SUCCESS:
       quit("failed to create framebuffer")
 
-proc createCommandPool(): VkCommandPool =
+proc createCommandPool(device: VkDevice, physicalDevice: VkPhysicalDevice, surface: VkSurfaceKHR): VkCommandPool =
   var
-    queueFamilyIndices = findQueueFamilies(physicalDevice)
+    queueFamilyIndices = findQueueFamilies(physicalDevice, surface)
     poolInfo = VkCommandPoolCreateInfo(
       sType: VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
       queueFamilyIndex: queueFamilyIndices.graphicsFamily,
@@ -526,7 +510,14 @@ proc createCommandPool(): VkCommandPool =
   if vkCreateCommandPool(device, poolInfo.addr, nil, result.addr) != VK_SUCCESS:
     quit("failed to create command pool")
 
-proc createCommandBuffers(): seq[VkCommandBuffer] =
+proc createCommandBuffers(
+    device: VkDevice,
+    swapChainExtent: VkExtent2D,
+    renderPass: VkRenderPass,
+    pipeline: VkPipeline,
+    swapChainFrameBuffers: seq[VkFramebuffer],
+    commandPool: VkCommandPool
+  ): seq[VkCommandBuffer] =
   result.setLen(swapChainFramebuffers.len)
   var
     allocInfo = VkCommandBufferAllocateInfo(
@@ -556,19 +547,19 @@ proc createCommandBuffers(): seq[VkCommandBuffer] =
         framebuffer: swapChainFramebuffers[i],
         renderArea: VkRect2d(
           offset: VkOffset2d(x: 0, y: 0),
-          extent: swapChain.swapChainExtent,
+          extent: swapChainExtent,
         ),
         clearValueCount: 1,
         pClearValues: clearColor.addr,
       )
     vkCmdBeginRenderPass(result[i], renderPassInfo.addr, VK_SUBPASS_CONTENTS_INLINE)
-    vkCmdBindPipeline(result[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline.pipeline)
+    vkCmdBindPipeline(result[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline)
     vkCmdDraw(result[i], 3, 1, 0, 0)
     vkCmdEndRenderPass(result[i])
     if vkEndCommandBuffer(result[i]) != VK_SUCCESS:
       quit("failed to record command buffer")
 
-proc createSemaphores(): Semaphores =
+proc createSemaphores(device: VkDevice): Semaphores =
   var semaphoreInfo = VkSemaphoreCreateInfo(
     sType: VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
   )
@@ -576,20 +567,36 @@ proc createSemaphores(): Semaphores =
     vkCreateSemaphore(device, semaphoreInfo.addr, nil, result.renderFinished.addr) != VK_SUCCESS:
     quit("failed to create semaphores")
 
+var
+  instance: VkInstance
+  physicalDevice: VkPhysicalDevice
+  device: VkDevice
+  surface: VkSurfaceKHR
+  graphicsQueue: VkQueue
+  presentQueue: VkQueue
+  swapChain: SwapChain
+  swapChainImageViews: seq[VkImageView]
+  renderPass: VkRenderPass
+  graphicsPipeline: GraphicsPipeline
+  swapChainFrameBuffers: seq[VkFramebuffer]
+  commandPool: VkCommandPool
+  commandBuffers: seq[VkCommandBuffer]
+  semaphores: Semaphores
+
 proc init*(glfwExtensions: cstringArray, glfwExtensionCount: uint32, createSurface: CreateSurfaceProc) =
   doAssert vkInit()
   instance = createInstance(glfwExtensions, glfwExtensionCount)
   surface = createSurface(instance)
-  physicalDevice = pickPhysicalDevice()
-  device = createLogicalDevice()
-  swapChain = createSwapChain()
-  swapChainImageViews = createImageViews()
-  renderPass = createRenderPass()
-  graphicsPipeline = createGraphicsPipeline()
-  swapChainFramebuffers = createFramebuffers()
-  commandPool = createCommandPool()
-  commandBuffers = createCommandBuffers()
-  semaphores = createSemaphores()
+  physicalDevice = pickPhysicalDevice(instance, surface)
+  device = createLogicalDevice(physicalDevice, surface, graphicsQueue, presentQueue)
+  swapChain = createSwapChain(device, physicalDevice, surface)
+  swapChainImageViews = createImageViews(device, swapChain.swapChainImages, swapChain.swapChainImageFormat)
+  renderPass = createRenderPass(device, swapChain.swapChainImageFormat)
+  graphicsPipeline = createGraphicsPipeline(device, swapChain.swapChainExtent, renderPass)
+  swapChainFramebuffers = createFramebuffers(device, swapChain.swapChainExtent, swapChainImageViews, renderPass)
+  commandPool = createCommandPool(device, physicalDevice, surface)
+  commandBuffers = createCommandBuffers(device, swapChain.swapChainExtent, renderPass, graphicsPipeline.pipeline, swapChainFramebuffers, commandPool)
+  semaphores = createSemaphores(device)
 
 proc tick*() =
   var imageIndex: uint32
