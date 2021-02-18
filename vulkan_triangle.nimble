@@ -13,5 +13,5 @@ task dev, "Run dev version":
 # Dependencies
 
 requires "nim >= 1.2.0"
-requires "https://github.com/oakes/nimgl#816c8e1"
+requires "nimgl >= 1.1.9"
 
